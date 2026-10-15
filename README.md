@@ -33,3 +33,29 @@ Example output: `track{1} = [ 1 2 1 NaN 4 ]` means that the first track is made 
 
 Check the `publish` version of the demo script in this repo:
 http://htmlpreview.github.io/?https://raw.githubusercontent.com/tinevez/simpletracker/master/publish/html/TestSimpleTracker.html
+
+## Python version
+
+The `python` branch contains a Python translation with the same main
+algorithmic ideas. Install it with:
+
+```bash
+python -m pip install -e ".[test,notebook]"
+```
+
+Run the tests:
+
+```bash
+pytest
+```
+
+Open the step-by-step Marimo notebook:
+
+```bash
+marimo edit simpletracker_tutorial.py
+```
+
+The Python API is in `simpletracker.py`. It accepts one NumPy array per frame
+and returns `tracks`, `adjacency_tracks`, and the forward-link adjacency
+matrix. Python point indices are zero-based; `-1` marks a missing point in a
+track.
