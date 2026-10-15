@@ -64,3 +64,12 @@ The notebook also includes a 3D study of two crossing trajectories
 (`crossing_demo.py`): it shows that the tracker works in any dimension, how
 often identities swap as a function of how close the particles pass, and how
 gap closing behaves when a detection is missing at the crossing.
+
+A second notebook, `crossing_gaps_tutorial.py` (scene in `crossing_gaps.py`),
+follows three 3D particles that cross and blink. It opens the tracker into its
+stages (`link_frames`, `close_gaps`, `build_tracks`) and shows how
+`max_gap_closing` and the distance limit decide whether gaps are bridged:
+
+```
+marimo edit crossing_gaps_tutorial.py
+```
