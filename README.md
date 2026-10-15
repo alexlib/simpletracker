@@ -37,22 +37,23 @@ http://htmlpreview.github.io/?https://raw.githubusercontent.com/tinevez/simpletr
 ## Python version
 
 The `python` branch contains a Python translation with the same main
-algorithmic ideas. Install it with:
+algorithmic ideas. It requires Python 3.13 or newer. Set up the locked uv
+environment, including notebook and test dependencies, with:
 
 ```bash
-python -m pip install -e ".[test,notebook]"
+uv sync --all-extras
 ```
 
 Run the tests:
 
 ```bash
-pytest
+uv run --all-extras pytest
 ```
 
 Open the step-by-step Marimo notebook:
 
 ```bash
-marimo edit simpletracker_tutorial.py
+uv run marimo edit simpletracker_tutorial.py
 ```
 
 The Python API is in `simpletracker.py`. It accepts one NumPy array per frame
@@ -71,5 +72,5 @@ stages (`link_frames`, `close_gaps`, `build_tracks`) and shows how
 `max_gap_closing` and the distance limit decide whether gaps are bridged:
 
 ```
-marimo edit crossing_gaps_tutorial.py
+uv run marimo edit crossing_gaps_tutorial.py
 ```

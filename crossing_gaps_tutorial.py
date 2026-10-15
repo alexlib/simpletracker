@@ -5,12 +5,12 @@ when the camera misses them? We open the tracker and watch each step.
 
 Run it with:
 
-    uv run --no-project --python .venv/bin/python marimo edit crossing_gaps_tutorial.py
+    uv run marimo edit crossing_gaps_tutorial.py
 """
 
 import marimo
 
-__generated_with = "0.17.6"
+__generated_with = "0.25.1"
 app = marimo.App(width="full")
 
 
@@ -197,7 +197,14 @@ def _(mo):
 
 
 @app.cell
-def _(frame_offsets, make_scene, missing_slider, noise_slider, np, separation_slider):
+def _(
+    frame_offsets,
+    make_scene,
+    missing_slider,
+    noise_slider,
+    np,
+    separation_slider,
+):
     scene = make_scene(
         separation_slider.value,
         noise_slider.value,
@@ -544,14 +551,13 @@ def _(
     draw_chains,
     gap_links3,
     limit_slider,
-    mo,
     missing_slider,
+    mo,
     np,
     offsets,
     particle_of,
     piece_chains3,
     pieces3,
-    reach_slider,
     scene,
 ):
     _fig, _ax = axes3d("Pieces (solid) and gap links (dashed black)")
@@ -635,6 +641,7 @@ def _(mo):
 
 @app.cell
 def _(
+    TRACK_COLORS,
     all_points,
     axes3d,
     build_tracks,
@@ -649,7 +656,6 @@ def _(
     reach_slider,
     scene,
     simpletracker,
-    TRACK_COLORS,
 ):
     _links = {**links3, **gap_links3}
     _steps_tracks, _ = build_tracks(_links, scene.frames)

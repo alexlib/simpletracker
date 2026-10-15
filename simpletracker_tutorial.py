@@ -2,12 +2,12 @@
 
 Run it with:
 
-    marimo edit simpletracker_tutorial.py
+    uv run marimo edit simpletracker_tutorial.py
 """
 
 import marimo
 
-__generated_with = "0.17.6"
+__generated_with = "0.25.1"
 app = marimo.App(width="full")
 
 
@@ -22,6 +22,7 @@ def _():
         nearest_neighbor_linker,
         simpletracker,
     )
+
     return hungarian_linker, mo, np, plt, simpletracker
 
 
