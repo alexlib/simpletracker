@@ -9,6 +9,8 @@ description = "Simple particle tracking with optional gap closing"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
+    "marimo>=0.17.6",
+    "matplotlib>=3.9.4",
     "numpy>=1.24",
     "scipy>=1.10",
 ]
@@ -21,4 +23,4 @@ test = ["pytest>=8"]
 testpaths = ["tests"]
 
 [tool.setuptools]
-py-modules = ["simpletracker"]
+py-modules = ["simpletracker", "crossing_demo"]

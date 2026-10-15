@@ -59,3 +59,8 @@ The Python API is in `simpletracker.py`. It accepts one NumPy array per frame
 and returns `tracks`, `adjacency_tracks`, and the forward-link adjacency
 matrix. Python point indices are zero-based; `-1` marks a missing point in a
 track.
+
+The notebook also includes a 3D study of two crossing trajectories
+(`crossing_demo.py`): it shows that the tracker works in any dimension, how
+often identities swap as a function of how close the particles pass, and how
+gap closing behaves when a detection is missing at the crossing.
