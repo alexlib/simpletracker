@@ -117,6 +117,139 @@ def nearest_neighbor_linker(
     )
 
 
+def frame_offsets(points: Points) -> np.ndarray:
+    """Global index of the first point of each frame, with the total appended."""
+    counts = [len(frame) for frame in points]
+    return np.concatenate(([0], np.cumsum(counts))).astype(int)
+
+
+def _select_linker(method: str):
+    if method == "hungarian":
+        return hungarian_linker
+    if method == "nearestneighbor":
+        return nearest_neighbor_linker
+    raise ValueError("method must be 'hungarian' or 'nearestneighbor'")
+
+
+def link_frames(
+    points: Points,
+    *,
+    max_linking_distance: float = np.inf,
+    method: LinkingMethod = "hungarian",
+) -> tuple[dict[int, int], list[np.ndarray], list[np.ndarray]]:
+    """Step 1: link every frame to the next one.
+
+    Returns ``(links, unmatched_sources, unmatched_targets)``. ``links`` maps a
+    global source index to a global target index. ``unmatched_sources[f]`` holds
+    the points of frame ``f`` with no partner in frame ``f + 1``, and
+    ``unmatched_targets[f]`` the points of frame ``f`` with no partner in
+    frame ``f - 1``.
+    """
+    frames = _validate_points(points)
+    linker = _select_linker(method)
+    offsets = frame_offsets(frames)
+    links: dict[int, int] = {}
+    unmatched_sources = [np.arange(len(frame)) for frame in frames]
+    unmatched_targets = [np.arange(len(frame)) for frame in frames]
+    for frame_index in range(len(frames) - 1):
+        target_indices, _, unassigned = linker(
+            frames[frame_index], frames[frame_index + 1], max_linking_distance
+        )
+        unmatched_sources[frame_index] = np.flatnonzero(target_indices < 0)
+        unmatched_targets[frame_index + 1] = unassigned
+        for source_index, target_index in enumerate(target_indices):
+            if target_index >= 0:
+                links[int(offsets[frame_index] + source_index)] = int(
+                    offsets[frame_index + 1] + target_index
+                )
+    return links, unmatched_sources, unmatched_targets
+
+
+def close_gaps(
+    points: Points,
+    unmatched_sources: Sequence[np.ndarray],
+    unmatched_targets: Sequence[np.ndarray],
+    *,
+    max_linking_distance: float = np.inf,
+    max_gap_closing: float = 3,
+) -> dict[int, int]:
+    """Step 2: bridge missing detections between track ends and later starts.
+
+    Takes the unmatched points left by :func:`link_frames` and returns only the
+    new links, which skip at least one frame.
+    """
+    frames = _validate_points(points)
+    n_frames = len(frames)
+    offsets = frame_offsets(frames)
+    remaining_targets = [targets.copy() for targets in unmatched_targets]
+    gap_limit = n_frames - 1 if np.isinf(max_gap_closing) else int(max_gap_closing)
+    gap_links: dict[int, int] = {}
+    for source_frame in range(n_frames - 2):
+        source_indices = np.asarray(unmatched_sources[source_frame]).copy()
+        for target_frame in range(
+            source_frame + 2, min(n_frames, source_frame + gap_limit + 1)
+        ):
+            if not len(source_indices) or not len(remaining_targets[target_frame]):
+                continue
+            target_indices, _, _ = nearest_neighbor_linker(
+                frames[source_frame][source_indices],
+                frames[target_frame][remaining_targets[target_frame]],
+                max_linking_distance,
+            )
+            matched = target_indices >= 0
+            for source_local, target_local in enumerate(target_indices):
+                if matched[source_local]:
+                    source_index = source_indices[source_local]
+                    target_index = remaining_targets[target_frame][target_local]
+                    gap_links[int(offsets[source_frame] + source_index)] = int(
+                        offsets[target_frame] + target_index
+                    )
+            source_indices = source_indices[~matched]
+            remaining_targets[target_frame] = remaining_targets[target_frame][
+                ~np.isin(
+                    np.arange(len(remaining_targets[target_frame])),
+                    target_indices[matched],
+                )
+            ]
+    return gap_links
+
+
+def build_tracks(
+    links: dict[int, int], points: Points
+) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    """Step 3: follow the links to turn them into tracks.
+
+    A track starts at every point that nothing links to. Returns
+    ``(tracks, adjacency_tracks)`` as described in :func:`simpletracker`.
+    """
+    n_frames = len(points)
+    offsets = frame_offsets(points)
+    incoming = set(links.values())
+    tracks: list[np.ndarray] = []
+    adjacency_tracks: list[np.ndarray] = []
+    for start in range(int(offsets[-1])):
+        if start in incoming:
+            continue
+        chain = [start]
+        while chain[-1] in links:
+            chain.append(links[chain[-1]])
+        adjacency_tracks.append(np.array(chain, dtype=int))
+        track = np.full(n_frames, -1, dtype=int)
+        for global_index in chain:
+            frame_index = int(np.searchsorted(offsets[1:], global_index, side="right"))
+            track[frame_index] = global_index - offsets[frame_index]
+        tracks.append(track)
+    return tracks, adjacency_tracks
+
+
+def links_to_adjacency(links: dict[int, int], total_points: int) -> np.ndarray:
+    """Boolean forward-link matrix over the concatenated points."""
+    adjacency = np.zeros((total_points, total_points), dtype=bool)
+    for source, target in links.items():
+        adjacency[source, target] = True
+    return adjacency
+
+
 def simpletracker(
     points: Points,
     *,
@@ -135,83 +268,20 @@ def simpletracker(
     * ``adjacency`` is a boolean forward-link matrix over those global points.
     """
     frames = _validate_points(points)
-    n_frames = len(frames)
-    counts = np.array([len(frame) for frame in frames], dtype=int)
-    offsets = np.concatenate(([0], np.cumsum(counts)))
-    total_points = int(offsets[-1])
-    links: dict[int, int] = {}
-    unmatched_sources: list[np.ndarray] = [np.arange(count) for count in counts]
-    unmatched_targets: list[np.ndarray] = [np.arange(count) for count in counts]
-
-    for frame_index in range(n_frames - 1):
-        if method == "hungarian":
-            linker = hungarian_linker
-        elif method == "nearestneighbor":
-            linker = nearest_neighbor_linker
-        else:
-            raise ValueError("method must be 'hungarian' or 'nearestneighbor'")
-        target_indices, _, unassigned = linker(
-            frames[frame_index],
-            frames[frame_index + 1],
-            max_linking_distance,
-        )
-        unmatched_sources[frame_index] = np.flatnonzero(target_indices < 0)
-        unmatched_targets[frame_index + 1] = unassigned
-        for source_index, target_index in enumerate(target_indices):
-            if target_index >= 0:
-                links[offsets[frame_index] + source_index] = (
-                    offsets[frame_index + 1] + target_index
-                )
-
-    gap_limit = n_frames - 1 if np.isinf(max_gap_closing) else int(max_gap_closing)
-    for source_frame in range(n_frames - 2):
-        source_indices = unmatched_sources[source_frame].copy()
-        for target_frame in range(
-            source_frame + 2, min(n_frames, source_frame + gap_limit + 1)
-        ):
-            if not len(source_indices) or not len(unmatched_targets[target_frame]):
-                continue
-            target_indices, _, _ = nearest_neighbor_linker(
-                frames[source_frame][source_indices],
-                frames[target_frame][unmatched_targets[target_frame]],
-                max_linking_distance,
-            )
-            matched = target_indices >= 0
-            for source_local, target_local in enumerate(target_indices):
-                if not matched[source_local]:
-                    continue
-                source_index = source_indices[source_local]
-                target_index = unmatched_targets[target_frame][target_local]
-                links[offsets[source_frame] + source_index] = (
-                    offsets[target_frame] + target_index
-                )
-            source_indices = source_indices[~matched]
-            unmatched_targets[target_frame] = unmatched_targets[target_frame][
-                ~np.isin(np.arange(len(unmatched_targets[target_frame])), target_indices[matched])
-            ]
-
-    adjacency = np.zeros((total_points, total_points), dtype=bool)
-    for source, target in links.items():
-        adjacency[source, target] = True
-
-    incoming = set(links.values())
-    starts = [point for point in range(total_points) if point not in incoming]
-    adjacency_tracks: list[np.ndarray] = []
-    tracks: list[np.ndarray] = []
-    for start in starts:
-        chain = []
-        current = start
-        while True:
-            chain.append(current)
-            if current not in links:
-                break
-            current = links[current]
-        adjacency_tracks.append(np.array(chain, dtype=int))
-        track = np.full(n_frames, -1, dtype=int)
-        for global_index in chain:
-            frame_index = int(np.searchsorted(offsets[1:], global_index, side="right"))
-            track[frame_index] = global_index - offsets[frame_index]
-        tracks.append(track)
+    links, unmatched_sources, unmatched_targets = link_frames(
+        frames, max_linking_distance=max_linking_distance, method=method
+    )
+    gap_links = close_gaps(
+        frames,
+        unmatched_sources,
+        unmatched_targets,
+        max_linking_distance=max_linking_distance,
+        max_gap_closing=max_gap_closing,
+    )
+    links.update(gap_links)
+    tracks, adjacency_tracks = build_tracks(links, frames)
+    total_points = int(frame_offsets(frames)[-1])
+    adjacency = links_to_adjacency(links, total_points)
 
     if debug:
         print(f"Created {len(links)} links over {total_points} points.")
@@ -220,7 +290,12 @@ def simpletracker(
 
 
 __all__ = [
+    "build_tracks",
+    "close_gaps",
+    "frame_offsets",
     "hungarian_linker",
+    "link_frames",
+    "links_to_adjacency",
     "nearest_neighbor_linker",
     "simpletracker",
 ]
