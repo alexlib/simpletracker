@@ -23,4 +23,4 @@ test = ["pytest>=9.1.1"]
 testpaths = ["tests"]
 
 [tool.setuptools]
-py-modules = ["simpletracker", "crossing_demo", "crossing_gaps"]
+py-modules = ["simpletracker", "crossing_demo", "crossing_gaps", "realistic_scene", "kalman_tracker", "crossing_resolver"]

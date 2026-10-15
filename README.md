@@ -74,3 +74,33 @@ stages (`link_frames`, `close_gaps`, `build_tracks`) and shows how
 ```
 uv run marimo edit crossing_gaps_tutorial.py
 ```
+
+### Robust tracking with noise, clutter and close crossings
+
+`robust_tracking_tutorial.py` makes the problem realistic
+(`realistic_scene.py`: detector noise, missed dots, false dots, near-miss
+crossings) and adds:
+
+- `kalman_tracker.py`: a constant-velocity Kalman tracker with Mahalanobis
+  gating, Hungarian assignment and coasting through gaps;
+- `crossing_resolver.py`: swaps parts of tracks at close approaches when that
+  makes the tracks more plausible as whole trajectories.
+
+```
+uv run marimo edit robust_tracking_tutorial.py
+```
+
+Measured over 20 random scenes (F1 / identity switches per scene; the filters
+are given the true noise level):
+
+| noise | distance-only | Kalman | Kalman + repair |
+|---|---|---|---|
+| 0.1 | 0.952 / 9.1 | 0.983 / 2.1 | 0.992 / 0.7 |
+| 0.2 | 0.952 / 8.7 | 0.976 / 3.5 | 0.978 / 3.2 |
+| 0.4 | 0.938 / 10.5 | 0.940 / 10.0 | 0.951 / 7.8 |
+| 0.6 | 0.896 / 14.9 | 0.910 / 14.9 | 0.919 / 13.0 |
+
+Limits: when particles pass closer than the noise they are indistinguishable;
+with many false dots (3 to 6 per frame) the Kalman tracker's F1 drops below
+the distance-only tracker's (0.90 versus 0.94 at 6), although it still makes
+fewer identity switches.
