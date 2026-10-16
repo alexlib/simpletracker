@@ -33,3 +33,74 @@ Example output: `track{1} = [ 1 2 1 NaN 4 ]` means that the first track is made 
 
 Check the `publish` version of the demo script in this repo:
 http://htmlpreview.github.io/?https://raw.githubusercontent.com/tinevez/simpletracker/master/publish/html/TestSimpleTracker.html
+
+## Python version
+
+The `python` branch contains a Python translation with the same main
+algorithmic ideas. It requires Python 3.13 or newer. Set up the locked uv
+environment, including notebook and test dependencies, with:
+
+```bash
+uv sync --all-extras
+```
+
+Run the tests:
+
+```bash
+uv run --all-extras pytest
+```
+
+Open the step-by-step Marimo notebook:
+
+```bash
+uv run marimo edit simpletracker_tutorial.py
+```
+
+The Python API is in `simpletracker.py`. It accepts one NumPy array per frame
+and returns `tracks`, `adjacency_tracks`, and the forward-link adjacency
+matrix. Python point indices are zero-based; `-1` marks a missing point in a
+track.
+
+The notebook also includes a 3D study of two crossing trajectories
+(`crossing_demo.py`): it shows that the tracker works in any dimension, how
+often identities swap as a function of how close the particles pass, and how
+gap closing behaves when a detection is missing at the crossing.
+
+A second notebook, `crossing_gaps_tutorial.py` (scene in `crossing_gaps.py`),
+follows three 3D particles that cross and blink. It opens the tracker into its
+stages (`link_frames`, `close_gaps`, `build_tracks`) and shows how
+`max_gap_closing` and the distance limit decide whether gaps are bridged:
+
+```
+uv run marimo edit crossing_gaps_tutorial.py
+```
+
+### Robust tracking with noise, clutter and close crossings
+
+`robust_tracking_tutorial.py` makes the problem realistic
+(`realistic_scene.py`: detector noise, missed dots, false dots, near-miss
+crossings) and adds:
+
+- `kalman_tracker.py`: a constant-velocity Kalman tracker with Mahalanobis
+  gating, Hungarian assignment and coasting through gaps;
+- `crossing_resolver.py`: swaps parts of tracks at close approaches when that
+  makes the tracks more plausible as whole trajectories.
+
+```
+uv run marimo edit robust_tracking_tutorial.py
+```
+
+Measured over 20 random scenes (F1 / identity switches per scene; the filters
+are given the true noise level):
+
+| noise | distance-only | Kalman | Kalman + repair |
+|---|---|---|---|
+| 0.1 | 0.952 / 9.1 | 0.983 / 2.1 | 0.992 / 0.7 |
+| 0.2 | 0.952 / 8.7 | 0.976 / 3.5 | 0.978 / 3.2 |
+| 0.4 | 0.938 / 10.5 | 0.940 / 10.0 | 0.951 / 7.8 |
+| 0.6 | 0.896 / 14.9 | 0.910 / 14.9 | 0.919 / 13.0 |
+
+Limits: when particles pass closer than the noise they are indistinguishable;
+with many false dots (3 to 6 per frame) the Kalman tracker's F1 drops below
+the distance-only tracker's (0.90 versus 0.94 at 6), although it still makes
+fewer identity switches.
