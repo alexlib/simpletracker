@@ -31,10 +31,13 @@ def _():
         update,
     )
     from realistic_scene import make_realistic_scene, score_tracks
-    from simpletracker import simpletracker
+    from simpletracker import build_tracks, close_gaps, link_frames, simpletracker
 
     return (
+        build_tracks,
+        close_gaps,
         kalman_tracker,
+        link_frames,
         mahalanobis_costs,
         make_motion_model,
         make_realistic_scene,
@@ -144,6 +147,96 @@ def _(mo, scene, score_tracks, simpletracker):
         f"links on false dots = {base_score['clutter_links']}"
     )
     return (base_score,)
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## Step by step: linked fragments, then gap filling
+
+    The distance-only tracker works in two stages. **Step 1** links each frame
+    to the next one. Whenever a dot is missed, the track *breaks* into
+    fragments. **Step 2** (gap filling) joins a fragment's end to a later
+    fragment's start, skipping up to `max_gap_closing` frames.
+
+    Left: the fragments after step 1 (one colour each, a dot marks every
+    fragment end). Middle: the links added by gap filling (thick red).
+    Right: the final trajectories.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    gap_frames = mo.ui.slider(0, 5, step=1, value=3, label="max_gap_closing (frames)")
+    gap_frames
+    return (gap_frames,)
+
+
+@app.cell
+def _(
+    build_tracks,
+    close_gaps,
+    gap_frames,
+    link_frames,
+    mo,
+    np,
+    plt,
+    scene,
+    score_tracks,
+):
+    _frames = scene.frames
+    _offsets = np.cumsum([0] + [len(f) for f in _frames])
+    _all = np.vstack(_frames)
+    _links, _src, _tgt = link_frames(_frames, max_linking_distance=3.0)
+    _gaps = close_gaps(
+        _frames, _src, _tgt, max_linking_distance=3.0, max_gap_closing=gap_frames.value
+    )
+    _frag, _ = build_tracks(_links, _frames)
+    _final, _ = build_tracks({**_links, **_gaps}, _frames)
+
+    def _coords(track):
+        return np.array(
+            [_frames[f][i] for f, i in enumerate(track) if i >= 0]
+        )
+
+    _fig = plt.figure(figsize=(16, 5))
+    _titles = ["1. linked fragments (broken at missed dots)", "2. gap-filling links", "3. final trajectories"]
+    _axes = [_fig.add_subplot(1, 3, k + 1, projection="3d") for k in range(3)]
+    for _ax, _t in zip(_axes, _titles):
+        _ax.set_title(_t)
+        _ax.scatter(*_all.T, s=4, c="lightgray")
+    _n_frag = 0
+    for _tr in _frag:
+        _c = _coords(_tr)
+        if len(_c) >= 2:
+            _n_frag += 1
+            _line = _axes[0].plot(*_c.T, lw=1.8)[0]
+            _axes[0].scatter(*_c[[0, -1]].T, s=25, color=_line.get_color())
+    for _a, _b in _gaps.items():
+        _pair = _all[[_a, _b]]
+        _axes[1].plot(*_pair.T, c="tab:red", lw=3)
+        _axes[1].scatter(*_pair.T, s=30, c="tab:red")
+    _n_final = 0
+    for _tr in _final:
+        _c = _coords(_tr)
+        if len(_c) >= 2:
+            _n_final += 1
+            _axes[2].plot(*_c.T, lw=1.8)
+    _f = score_tracks(_frag, scene.truth)
+    _g = score_tracks(_final, scene.truth)
+    mo.vstack(
+        [
+            mo.as_html(_fig),
+            mo.md(
+                f"After linking: **{_n_frag} fragments**, recall {_f['recall']:.3f}. "
+                f"Gap filling added **{len(_gaps)} links**, leaving "
+                f"**{_n_final} tracks**: recall {_g['recall']:.3f}, "
+                f"precision {_g['precision']:.3f}, switches {_g['switches']}."
+            ),
+        ]
+    )
+    return
 
 
 @app.cell
